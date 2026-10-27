@@ -2,8 +2,10 @@
 import logging
 import socket
 import threading
+import time
 
 from common import protocol
+from server.db import DatabaseError
 
 log = logging.getLogger("server")
 
@@ -53,13 +55,7 @@ class ClientHandler(threading.Thread):
             engine.reset(self.agent_id)
             log.info("👋 HELLO 수신: agent_id=%s 등록", self.agent_id)
         elif msg_type == protocol.DATA:
-            d = msg["data"]
-            log.info(
-                "📥 DATA seq=%d | 온도 %s℃  습도 %s%%  누수 %s  거리 %scm",
-                msg["seq"], _fmt(d.get("temperature")), _fmt(d.get("humidity")),
-                "있음" if d.get("leak") else "없음", _fmt(d.get("distance_cm")),
-            )
-            self.apply(*engine.evaluate(self.agent_id, d))
+            self.handle_data(msg)
         elif msg_type == protocol.EVENT:
             log.info("🔔 EVENT 수신: %s", msg.get("event"))
             if msg.get("event") == protocol.ALARM_CLEAR:
@@ -67,10 +63,41 @@ class ClientHandler(threading.Thread):
         else:
             log.warning("알 수 없는 메시지 type: %s", msg_type)
 
+    def handle_data(self, msg: dict):
+        """DATA 처리 순서: ① DB 저장 → ② ACK 응답 → ③ 상태 판정."""
+        seq, d = msg["seq"], msg["data"]
+        log.info(
+            "📥 DATA seq=%d | 온도 %s℃  습도 %s%%  누수 %s  거리 %scm",
+            seq, _fmt(d.get("temperature")), _fmt(d.get("humidity")),
+            "있음" if d.get("leak") else "없음", _fmt(d.get("distance_cm")),
+        )
+        try:
+            is_new = self.server.db.save_reading(self.agent_id, seq, msg["ts"], d)
+        except DatabaseError as e:
+            # 저장이 안 됐으니 ACK를 보내지 않는다 → 에이전트가 나중에 다시 보낼 수 있다(5단계)
+            log.error("🗄️ DB 저장 실패 seq=%d: %s → ACK 안 보냄", seq, e)
+            is_new = None
+        else:
+            if is_new:
+                log.info("🗄️ DB 저장 완료 seq=%d", seq)
+            else:
+                log.info("🗄️ 이미 저장된 seq=%d (중복) → 저장 생략", seq)
+            protocol.send_msg(self.conn, protocol.make_ack(self.agent_id, seq))
+            log.info("📤 ACK 전송 seq=%d", seq)
+
+        # 중복(재전송된 옛날 값)은 이미 판정했으므로 다시 판정하지 않는다.
+        # DB가 고장 나도 경보는 울려야 하므로 저장 실패(None)일 때는 판정한다.
+        if is_new is not False:
+            self.apply(*self.server.engine.evaluate(self.agent_id, d))
+
     def apply(self, commands: list, events: list):
-        """판정 결과 처리: 이벤트는 로그로 남기고(3단계부터 DB), CMD는 같은 연결로 에이전트에 보낸다."""
+        """판정 결과 처리: 이벤트는 DB에 기록하고, CMD는 같은 연결로 에이전트에 보낸다."""
         for ev in events:
             log.info("🚨 이벤트 [%s/%s] %s", ev["event_type"], ev["level"], ev["message"])
+            try:
+                self.server.db.save_event(self.agent_id, time.time(), ev["event_type"], ev["level"], ev["message"])
+            except DatabaseError as e:
+                log.error("🗄️ 이벤트 저장 실패: %s", e)
         for cmd in commands:
             protocol.send_msg(self.conn, cmd)
             detail = cmd["color"] if cmd["action"] == protocol.SET_LED else ("ON" if cmd["on"] else "OFF")
@@ -80,10 +107,11 @@ class ClientHandler(threading.Thread):
 class MonitorServer:
     """0.0.0.0:port 에서 접속을 기다리는 서버. 접속한 에이전트 목록을 Lock으로 보호한다."""
 
-    def __init__(self, host: str, port: int, engine):
+    def __init__(self, host: str, port: int, engine, db):
         self.host = host
         self.port = port
         self.engine = engine         # 모든 ClientHandler가 함께 쓰는 AlarmEngine
+        self.db = db                 # 모든 ClientHandler가 함께 쓰는 Database
         self.clients = {}            # agent_id → ClientHandler
         self.lock = threading.Lock() # clients는 여러 Handler 쓰레드가 동시에 바꾸므로 보호
 

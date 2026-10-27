@@ -1,1 +1,2 @@
-# 1단계: 표준 라이브러리만 사용
+PyMySQL==1.1.1
+cryptography==43.0.3   # MySQL 8 기본 인증(caching_sha2_password)에 필요, 5단계 AES에서도 사용

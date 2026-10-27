@@ -79,10 +79,18 @@ def make_hello(agent_id: str) -> dict:
     return _base(HELLO, agent_id)
 
 
-def make_data(agent_id: str, seq: int, data: dict) -> dict:
+def make_data(agent_id: str, seq: int, data: dict, ts: float = None) -> dict:
     msg = _base(DATA, agent_id)
+    if ts is not None:
+        msg["ts"] = ts   # 보낸 시각이 아니라 '측정한' 시각 (늦게 보내도 시간이 맞게)
     msg["seq"] = seq
     msg["data"] = data
+    return msg
+
+
+def make_ack(agent_id: str, seq: int) -> dict:
+    msg = _base(ACK, agent_id)
+    msg["seq"] = seq
     return msg
 
 

@@ -3,7 +3,7 @@
 쓰레드 구성 (2단계):
   - SensorThread   : 2초마다 센서를 읽어 queue에 넣는다 (연결 상태와 무관하게 계속 측정)
   - SenderThread   : queue에서 꺼내 seq를 붙여 DATA로 전송한다
-  - ReceiverThread : 서버가 보내는 CMD를 받아 액추에이터(LED·부저)를 움직인다
+  - ReceiverThread : 서버가 보내는 CMD를 받아 액추에이터(LED·부저)를 움직이고, ACK를 확인한다
   - 메인 쓰레드    : AgentClient.run() — 서버 연결, HELLO 전송, 끊기면 재접속
 연결은 하나만 쓰고, 그 하나로 보내기(Sender)와 받기(Receiver)를 동시에 한다.
 """
@@ -11,6 +11,7 @@ import logging
 import queue
 import socket
 import threading
+import time
 
 from common import protocol
 
@@ -31,13 +32,14 @@ class SensorThread(threading.Thread):
         log.info("🌡️ SensorThread 시작 (%.0f초 주기, 센서: %s)",
                  SENSOR_INTERVAL, ", ".join(s.name for s in self.sensors))
         while not self.stop_event.is_set():
+            measured_at = time.time()
             reading = {}
             for sensor in self.sensors:
                 try:
                     reading.update(sensor.read())
                 except Exception as e:
                     log.warning("센서 %s 읽기 실패: %s", sensor.name, e)
-            self.out_queue.put(reading)
+            self.out_queue.put((measured_at, reading))
             log.info("측정 → 큐 (대기 %d개): %s", self.out_queue.qsize(), reading)
             # wait()은 stop_event가 켜지면 바로 깨어나므로 sleep보다 종료가 빠르다
             self.stop_event.wait(SENSOR_INTERVAL)
@@ -56,11 +58,11 @@ class SenderThread(threading.Thread):
         try:
             while self.conn_alive.is_set():
                 try:
-                    reading = self.client.data_queue.get(timeout=1.0)
+                    measured_at, reading = self.client.data_queue.get(timeout=1.0)
                 except queue.Empty:
                     continue
                 seq = self.client.next_seq()
-                self.client.send(protocol.make_data(self.client.agent_id, seq, reading))
+                self.client.send(protocol.make_data(self.client.agent_id, seq, reading, ts=measured_at))
                 log.info("📤 DATA 전송 seq=%d", seq)
         except OSError as e:
             log.warning("전송 실패: %s", e)
@@ -118,6 +120,10 @@ class AgentClient:
             protocol.send_msg(self.sock, msg)
 
     def handle_server_msg(self, msg: dict):
+        if msg.get("type") == protocol.ACK:
+            # 서버가 DB에 저장을 끝냈다는 뜻. 5단계에서 이 seq를 pending에서 지운다
+            log.info("✅ ACK 수신 seq=%d (서버 저장 완료)", msg["seq"])
+            return
         if msg.get("type") != protocol.CMD:
             log.warning("알 수 없는 메시지 type: %s", msg.get("type"))
             return

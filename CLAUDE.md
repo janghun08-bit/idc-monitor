@@ -116,6 +116,11 @@ CREATE TABLE events (
 );
 ```
 Grafana: MySQL datasource 자동 등록, 패널 = 온도/습도 시계열, 누수·접근 상태, 최근 events 표.
+- `ts`는 UTC로 저장 (Grafana가 브라우저 시간대로 표시). DATA의 `ts`는 보낸 시각이 아니라 **측정 시각**.
+- 서버 DATA 처리 순서: DB 저장 → ACK → 판정. **저장에 실패하면 ACK를 보내지 않는다.** 중복 seq는 ACK만 보내고 판정하지 않는다.
+- DB가 죽어도 서버와 경보는 계속 동작한다. 연결 실패 후 10초간은 접속을 시도하지 않고 바로 실패 처리 (경보 지연 방지).
+- `DB_USER`가 비어 있으면 `NullDatabase`(저장 생략)로 실행 → Docker 없이도 1~2단계처럼 돌릴 수 있다.
+- docker-compose는 `name: idc-monitor`로 고정 (이 PC에 다른 docker 프로젝트가 있으므로 이름·볼륨이 겹치지 않게). 호스트 포트는 `DB_PORT`, `GRAFANA_PORT`로 변경 가능.
 
 ## 하드웨어 핀 배치 (BCM 번호)
 | 부품 | 핀 | 비고 |
@@ -143,6 +148,9 @@ DB_PORT=3306
 DB_USER=
 DB_PASSWORD=
 DB_NAME=idc_monitor
+MYSQL_ROOT_PASSWORD=   # docker MySQL 컨테이너용
+GRAFANA_ADMIN_PASSWORD=
+GRAFANA_PORT=3000
 SLACK_WEBHOOK_URL=
 TEMP_WARN=30
 TEMP_DANGER=35
@@ -180,3 +188,4 @@ ACCESS_CM=30
 ## 진행 기록
 - 2026-10-27 1단계 완료: 길이 프레이밍 프로토콜, 서버 accept + ClientHandler 쓰레드, 에이전트 SensorThread→Queue→SenderThread, Mock 센서, 3초 고정 재접속 (실행은 `py -m server.main` / `py -m agent.main`)
 - 2026-10-27 2단계 완료: AlarmEngine(상태 변화 시에만 CMD), 에이전트 ReceiverThread + MockActuator, KeyboardThread 상황 주입, 버튼 ALARM_CLEAR EVENT, send_lock
+- 2026-10-27 3단계 완료: docker-compose(MySQL 8.4 + Grafana 11.4, 프로젝트명 idc-monitor), init.sql, 대시보드 자동 등록, Database(Lock + 실패 시 10초 재시도 보류), 저장 후 ACK, 측정 시각 ts. 실제 MySQL/Grafana에서 과열 표시 확인

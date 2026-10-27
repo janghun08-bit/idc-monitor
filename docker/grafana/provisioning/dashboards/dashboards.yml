@@ -1,0 +1,8 @@
+# dashboards 폴더의 JSON 파일을 대시보드로 자동 등록한다
+apiVersion: 1
+providers:
+  - name: idc
+    folder: IDC
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

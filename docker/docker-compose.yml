@@ -1,0 +1,55 @@
+# 실행 (프로젝트 루트에서):
+#   docker compose --env-file .env -f docker/docker-compose.yml up -d
+# 비밀번호 등은 루트의 .env에서 읽는다.
+#
+# 다른 docker 프로젝트와 섞이지 않도록 프로젝트 이름·컨테이너 이름·볼륨을 모두 idc 전용으로 둔다.
+# (이름을 안 정하면 폴더 이름 'docker'가 프로젝트 이름이 되어 다른 프로젝트와 겹칠 수 있다)
+# 호스트 포트도 .env의 DB_PORT / GRAFANA_PORT로 바꿀 수 있다.
+name: idc-monitor
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: idc-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${DB_PORT:-3306}:3306"   # 내 PC에서만 접속 가능 (외부 공개 안 함)
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: idc-grafana
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_DEFAULT_LANGUAGE: ko-KR
+      # provisioning 파일에서 ${DB_USER} 형태로 참조
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  mysql-data:
+  grafana-data:
