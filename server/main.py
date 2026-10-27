@@ -3,6 +3,7 @@ import logging
 import threading
 
 from common import config
+from server.alarm import AlarmEngine
 from server.tcp_server import MonitorServer
 
 
@@ -10,12 +11,15 @@ def main():
     config.load_env()
     config.setup_logging()
     threading.current_thread().name = "Main(accept)"
+    log = logging.getLogger("server")
 
-    server = MonitorServer("0.0.0.0", config.get_int("SERVER_PORT", 9000))
+    engine = AlarmEngine.from_config()
+    log.info("판정 기준: %s", engine.describe())
+    server = MonitorServer("0.0.0.0", config.get_int("SERVER_PORT", 9000), engine)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logging.getLogger("server").info("Ctrl+C → 서버 종료")
+        log.info("Ctrl+C → 서버 종료")
 
 
 if __name__ == "__main__":

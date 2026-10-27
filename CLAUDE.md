@@ -76,6 +76,9 @@ idc-monitor/
 - **상태가 바뀔 때만** CMD 전송, events 테이블 기록, Slack 알림 (매 수신마다 보내지 않음).
 - 접근(ACCESS)은 감지 시작 시 1회만 기록, 30cm 밖으로 나가면 해제.
 - 버튼(ALARM_CLEAR): 부저만 즉시 OFF. 원인이 남아 있으면 LED는 유지, 정상으로 돌아오면 자동 해제.
+  - 에이전트가 부저를 현장에서 바로 끄고 EVENT를 보낸다 (연결이 끊겨 있어도 부저는 꺼짐). 서버는 DANGER를 벗어날 때까지 부저를 다시 켜지 않는다.
+- 경보 단계(NORMAL/WARN/DANGER) 변화 → `STATE_CHANGE`, 출입 시작 → `ACCESS`로 따로 기록한다. 접속 직후 첫 판정이 NORMAL이면 기록하지 않는다.
+- 에이전트가 새로 접속(HELLO)하면 서버는 그 에이전트 상태를 초기화하고, 첫 DATA에서 LED·부저 CMD를 다시 보낸다.
 - 임계값은 `.env`로 바꿀 수 있게 (시연 때 30℃ 대신 낮은 값으로 조정 가능).
 
 ## 신뢰성
@@ -149,7 +152,7 @@ ACCESS_CM=30
 
 ## Mock 센서 동작 (시연 시나리오 재현용)
 - 기본: 온도 24~26℃, 습도 40~50%, 누수 없음, 거리 100~200cm 사이 랜덤
-- 키보드 입력으로 상황 주입: `t` 과열, `l` 누수 토글, `a` 접근 토글, `b` 버튼(경보 해제), `n` 정상 복귀
+- 키보드 입력으로 상황 주입 (글자 + Enter, `KeyboardThread`): `t` 과열(36~38℃), `w` 고온 경고(31~33℃), `l` 누수 토글, `a` 접근 토글, `b` 버튼(경보 해제), `n` 정상 복귀
 - Mock 액추에이터는 LED 색과 부저 상태를 터미널에 출력
 
 ## 구현 단계 (순서대로, 단계마다 실행 확인)
@@ -176,3 +179,4 @@ ACCESS_CM=30
 
 ## 진행 기록
 - 2026-10-27 1단계 완료: 길이 프레이밍 프로토콜, 서버 accept + ClientHandler 쓰레드, 에이전트 SensorThread→Queue→SenderThread, Mock 센서, 3초 고정 재접속 (실행은 `py -m server.main` / `py -m agent.main`)
+- 2026-10-27 2단계 완료: AlarmEngine(상태 변화 시에만 CMD), 에이전트 ReceiverThread + MockActuator, KeyboardThread 상황 주입, 버튼 ALARM_CLEAR EVENT, send_lock
