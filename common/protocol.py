@@ -19,6 +19,7 @@ MAX_FRAME_SIZE = 1024 * 1024      # 비정상 길이 값으로 메모리를 다 
 
 # 메시지 type
 HELLO = "HELLO"
+WELCOME = "WELCOME"
 DATA = "DATA"
 ACK = "ACK"
 HEARTBEAT = "HEARTBEAT"
@@ -79,6 +80,13 @@ def make_hello(agent_id: str) -> dict:
     return _base(HELLO, agent_id)
 
 
+def make_welcome(agent_id: str, last_seq) -> dict:
+    """HELLO에 대한 서버 응답. last_seq = DB에 저장된 이 에이전트의 마지막 seq (모르면 None)."""
+    msg = _base(WELCOME, agent_id)
+    msg["last_seq"] = last_seq
+    return msg
+
+
 def make_data(agent_id: str, seq: int, data: dict, ts: float = None) -> dict:
     msg = _base(DATA, agent_id)
     if ts is not None:
@@ -92,6 +100,10 @@ def make_ack(agent_id: str, seq: int) -> dict:
     msg = _base(ACK, agent_id)
     msg["seq"] = seq
     return msg
+
+
+def make_heartbeat(agent_id: str) -> dict:
+    return _base(HEARTBEAT, agent_id)
 
 
 def make_event(agent_id: str, event: str) -> dict:

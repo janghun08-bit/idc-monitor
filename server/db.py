@@ -60,12 +60,14 @@ class Database:
             log.info("🗄️ MySQL 연결됨: %s:%s/%s", self.params["host"], self.params["port"], self.params["database"])
         return self.conn
 
-    def _execute(self, sql: str, args: tuple) -> int:
+    def _execute(self, sql: str, args: tuple, fetch: bool = False):
+        """쿼리 실행. fetch=False면 바뀐 줄 수, True면 첫 줄을 돌려준다."""
         import pymysql
         with self.lock:
             try:
                 with self._connection().cursor() as cur:
-                    return cur.execute(sql, args)
+                    rows = cur.execute(sql, args)
+                    return cur.fetchone() if fetch else rows
             except pymysql.Error as e:
                 # 연결이 깨졌을 수 있으니 버리고, 다음 쿼리 때 새로 연결한다
                 if self.conn is not None:
@@ -82,6 +84,11 @@ class Database:
             self._execute("SELECT 1", ())
         except DatabaseError as e:
             log.warning("MySQL 연결 실패: %s (나중에 다시 시도)", e)
+
+    def last_seq(self, agent_id: str):
+        """이 에이전트의 마지막 저장 seq. 기록이 없으면 0."""
+        row = self._execute("SELECT MAX(seq) FROM sensor_readings WHERE agent_id = %s", (agent_id,), fetch=True)
+        return row[0] or 0
 
     def save_reading(self, agent_id: str, seq: int, ts: float, data: dict) -> bool:
         """저장하면 True, 이미 같은 (agent_id, seq)가 있으면 False."""
@@ -106,6 +113,9 @@ class NullDatabase:
 
     def check(self):
         pass
+
+    def last_seq(self, agent_id):
+        return None   # 저장을 안 하므로 모름 → 에이전트는 자기 번호를 그대로 쓴다
 
     def save_reading(self, agent_id, seq, ts, data) -> bool:
         return True

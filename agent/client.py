@@ -2,7 +2,7 @@
 
 쓰레드 구성 (2단계):
   - SensorThread   : 2초마다 센서를 읽어 queue에 넣는다 (연결 상태와 무관하게 계속 측정)
-  - SenderThread   : queue에서 꺼내 seq를 붙여 DATA로 전송한다
+  - SenderThread   : queue에서 꺼내 seq를 붙여 DATA로 전송하고, 5초마다 HEARTBEAT를 보낸다
   - ReceiverThread : 서버가 보내는 CMD를 받아 액추에이터(LED·부저)를 움직이고, ACK를 확인한다
   - 메인 쓰레드    : AgentClient.run() — 서버 연결, HELLO 전송, 끊기면 재접속
 연결은 하나만 쓰고, 그 하나로 보내기(Sender)와 받기(Receiver)를 동시에 한다.
@@ -18,6 +18,7 @@ from common import protocol
 log = logging.getLogger("agent")
 
 SENSOR_INTERVAL = 2.0   # 측정 주기(초)
+HEARTBEAT_INTERVAL = 5.0
 RECONNECT_DELAY = 3.0   # 2단계까지는 고정 대기, 5단계에서 지수 백오프로 바꾼다
 
 
@@ -55,8 +56,14 @@ class SenderThread(threading.Thread):
 
     def run(self):
         log.info("📤 SenderThread 시작")
+        last_heartbeat = time.monotonic()
         try:
             while self.conn_alive.is_set():
+                # 측정값과 상관없이 5초마다 '살아 있음' 신호 (서버 Watchdog이 감시)
+                if time.monotonic() - last_heartbeat >= HEARTBEAT_INTERVAL:
+                    self.client.send(protocol.make_heartbeat(self.client.agent_id))
+                    log.info("💓 HEARTBEAT 전송")
+                    last_heartbeat = time.monotonic()
                 try:
                     measured_at, reading = self.client.data_queue.get(timeout=1.0)
                 except queue.Empty:
@@ -151,9 +158,29 @@ class AgentClient:
         sock = socket.create_connection((self.host, self.port), timeout=5)
         sock.settimeout(10)  # send가 무한정 멈추지 않도록, recv는 10초마다 한 번씩 깨어나도록
         log.info("✅ TCP 연결 성공 (로컬 %s:%s)", *sock.getsockname())
-        protocol.send_msg(sock, protocol.make_hello(self.agent_id))
-        log.info("👋 HELLO 전송: agent_id=%s", self.agent_id)
+        try:
+            protocol.send_msg(sock, protocol.make_hello(self.agent_id))
+            log.info("👋 HELLO 전송: agent_id=%s", self.agent_id)
+            # 송수신 쓰레드를 띄우기 전에, 서버의 WELCOME을 여기서 직접 한 번 받는다
+            welcome = protocol.recv_msg(sock)
+        except (OSError, ValueError, protocol.ConnectionClosed) as e:
+            sock.close()
+            raise OSError(f"HELLO/WELCOME 실패: {e}") from e
+        if welcome.get("type") != protocol.WELCOME:
+            sock.close()
+            raise OSError(f"WELCOME 대신 {welcome.get('type')} 수신")
+        self.sync_seq(welcome.get("last_seq"))
         return sock
+
+    def sync_seq(self, last_seq):
+        """서버가 알려준 마지막 저장 번호보다 내 번호가 작으면, 그 다음 번호부터 이어서 쓴다."""
+        if last_seq is None:
+            log.info("📥 WELCOME 수신: 서버가 마지막 번호를 모름 → 내 번호(%d) 그대로 사용", self.seq)
+        elif last_seq > self.seq:
+            log.info("📥 WELCOME 수신: 서버 마지막 저장 seq=%d → %d번부터 이어서 보냄", last_seq, last_seq + 1)
+            self.seq = last_seq
+        else:
+            log.info("📥 WELCOME 수신: 서버 마지막 저장 seq=%d, 내 번호(%d)가 더 큼 → 그대로 사용", last_seq, self.seq)
 
     def run(self):
         SensorThread(self.sensors, self.data_queue, self.stop_event).start()

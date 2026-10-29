@@ -5,7 +5,9 @@ import threading
 from common import config
 from server.alarm import AlarmEngine
 from server.db import Database
+from server.notifier import SlackNotifier
 from server.tcp_server import MonitorServer
+from server.watchdog import Watchdog
 
 
 def main():
@@ -18,7 +20,11 @@ def main():
     log.info("판정 기준: %s", engine.describe())
     db = Database.from_config()
     db.check()
-    server = MonitorServer("0.0.0.0", config.get_int("SERVER_PORT", 9000), engine, db)
+    notifier = SlackNotifier.from_config()
+    notifier.start()
+
+    server = MonitorServer("0.0.0.0", config.get_int("SERVER_PORT", 9000), engine, db, notifier)
+    Watchdog(server, timeout=config.get_float("OFFLINE_SEC", 15)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

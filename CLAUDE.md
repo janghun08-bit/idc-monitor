@@ -56,6 +56,7 @@ idc-monitor/
 | type | 방향 | 내용 |
 |---|---|---|
 | HELLO | 에이전트→서버 | 접속 직후 1회. `agent_id` 등록 |
+| WELCOME | 서버→에이전트 | HELLO 응답. `last_seq` = DB에 저장된 이 에이전트의 마지막 seq (모르면 null). 에이전트는 이보다 작으면 `last_seq+1`부터 이어서 번호를 붙인다 (재시작 시 seq가 1로 돌아가 옛 기록과 중복 처리되는 문제 방지). 에이전트는 WELCOME을 받은 뒤에 송수신 쓰레드를 시작한다 |
 | DATA | 에이전트→서버 | `seq`, `data: {temperature, humidity, leak, distance_cm}` |
 | ACK | 서버→에이전트 | `seq` — 해당 DATA 저장 완료 |
 | HEARTBEAT | 에이전트→서버 | 5초마다 |
@@ -87,12 +88,15 @@ idc-monitor/
   서버는 같은 seq를 중복 저장하지 않는다 (agent_id + seq 유니크).
 - **재연결:** 연결 실패 시 1→2→4→…최대 10초 백오프로 재시도.
 - **하트비트 감시:** 서버의 Watchdog 쓰레드가 1초마다 확인, 15초간 아무 메시지도 없으면 `AGENT_OFFLINE` 이벤트 + Slack.
-  다시 메시지가 오면 `AGENT_ONLINE`.
+  다시 메시지가 오면 `AGENT_ONLINE`. (OFFLINE 레벨은 WARN, ONLINE은 OFFLINE 이후에만 기록. 시간은 `OFFLINE_SEC`로 조정)
+  - 서버는 연결이 끊겨도 에이전트의 마지막 수신 시각(`liveness`)을 남겨 둬서 Watchdog이 감시를 이어 간다.
+- 이벤트는 `MonitorServer.record_event()` 한 곳에서 로그 → DB → Slack 순으로 처리한다. 판정 결과는 **CMD를 먼저 보내고** 이벤트를 기록한다 (DB·Slack 지연이 현장 대응을 늦추지 않게).
+- 서버 포트: Windows에서는 `SO_EXCLUSIVEADDRUSE`(같은 포트에 서버 두 개가 뜨는 것 방지), Linux에서는 `SO_REUSEADDR`.
 - 소켓에는 `settimeout`을 걸고, 모든 네트워크 코드는 예외 처리.
 
 ## 쓰레드 구성
 - 에이전트: `SensorThread`(2초마다 측정 → 큐), `SenderThread`(큐/버퍼 → 전송, 하트비트), `ReceiverThread`(CMD·ACK 수신 → 액추에이터 제어), 메인 쓰레드(연결 관리, 버튼 콜백)
-- 서버: 메인(accept 루프), `ClientHandler`(접속별 쓰레드), `Watchdog`
+- 서버: 메인(accept 루프), `ClientHandler`(접속별 쓰레드), `Watchdog`, `SlackNotifier`(큐에서 꺼내 HTTP 전송 — Slack이 느려도 경보 처리가 멈추지 않게)
 - 공유 상태(pending, 클라이언트 목록)는 `threading.Lock`으로 보호.
 
 ## DB 스키마 (MySQL)
@@ -156,6 +160,7 @@ TEMP_WARN=30
 TEMP_DANGER=35
 HUMI_WARN=70
 ACCESS_CM=30
+OFFLINE_SEC=15
 ```
 
 ## Mock 센서 동작 (시연 시나리오 재현용)
@@ -189,3 +194,4 @@ ACCESS_CM=30
 - 2026-10-27 1단계 완료: 길이 프레이밍 프로토콜, 서버 accept + ClientHandler 쓰레드, 에이전트 SensorThread→Queue→SenderThread, Mock 센서, 3초 고정 재접속 (실행은 `py -m server.main` / `py -m agent.main`)
 - 2026-10-27 2단계 완료: AlarmEngine(상태 변화 시에만 CMD), 에이전트 ReceiverThread + MockActuator, KeyboardThread 상황 주입, 버튼 ALARM_CLEAR EVENT, send_lock
 - 2026-10-27 3단계 완료: docker-compose(MySQL 8.4 + Grafana 11.4, 프로젝트명 idc-monitor), init.sql, 대시보드 자동 등록, Database(Lock + 실패 시 10초 재시도 보류), 저장 후 ACK, 측정 시각 ts. 실제 MySQL/Grafana에서 과열 표시 확인
+- 2026-10-29 4단계 완료: SlackNotifier 쓰레드(큐 + 3초 타임아웃), 하트비트 5초, Watchdog(15초 OFFLINE/ONLINE), record_event 일원화, CMD 우선 전송, Windows 포트 독점. 재시작 시 seq 중복 버그 → HELLO/WELCOME으로 마지막 seq 동기화. 실제 Slack 알림 확인
