@@ -1,0 +1,10 @@
+# 이미지에 들어가면 안 되는 것 (특히 비밀값 .env)
+.env
+.git
+**/__pycache__
+**/*.pyc
+*.buffer
+venv/
+.venv/
+docs/
+agent/

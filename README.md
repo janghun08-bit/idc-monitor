@@ -224,19 +224,19 @@ flowchart TB
 idc-monitor/
 ├─ common/          # 에이전트와 서버가 함께 쓰는 코드
 │  ├─ protocol.py   #   길이 붙이기/자르기, 메시지 만들기
-│  ├─ crypto.py     #   암호화 (5단계)
+│  ├─ crypto.py     #   AES-256-GCM 암호화
 │  └─ config.py     #   .env 읽기, 로그 설정
 ├─ agent/           # 🧑‍🔧 라즈베리파이에서 실행
 │  ├─ client.py     #   연결·재접속, 송신/수신 쓰레드
-│  ├─ sensors.py    #   센서 (Mock 포함), 키보드 상황 주입
-│  └─ actuators.py  #   LED·부저 (Mock 포함)
+│  ├─ sensors.py    #   센서: 실제(DHT22·누수·초음파) + Mock, 키보드 상황 주입
+│  └─ actuators.py  #   LED·부저·버튼: 실제(GPIO) + Mock
 ├─ server/          # 🏢 서버에서 실행
 │  ├─ tcp_server.py #   accept, 접속별 ClientHandler
 │  ├─ alarm.py      #   AlarmEngine: 판정
 │  ├─ db.py         #   MySQL 저장
 │  ├─ notifier.py   #   Slack 알림 쓰레드
 │  └─ watchdog.py   #   끊김 감시 쓰레드
-├─ docker/          # MySQL + Grafana (대시보드 자동 등록)
+├─ docker/          # MySQL + Grafana(대시보드 자동 등록) + 서버 이미지(server.Dockerfile)
 └─ docs/devlog.md   # 📔 개발 일지
 ```
 
@@ -271,6 +271,81 @@ py -m agent.main
 
 ---
 
+## 🔌 라즈베리파이 배선 (BCM 번호)
+
+| 부품 | 부품 핀 → Pi 핀 | 전원 | 주의 |
+|---|---|---|---|
+| DHT22 온습도 | DATA → **GPIO4** | 3.3V | 3핀 모듈 |
+| 누수 센서 | D0 → **GPIO17** | 3.3V | 물 감지 시 LOW인 모듈이 많음 → `LEAK_ACTIVE_LOW=1` |
+| HC-SR04 초음파 | Trig → **GPIO23**, Echo → **GPIO24** | 5V | ⚠️ **Echo는 1kΩ/2kΩ 분압 필수** (5V → 3.3V) |
+| RGB LED | R → **GPIO16**, G → **GPIO20**, B → **GPIO21** | — | 공통 애노드면 `LED_COMMON_ANODE=1` |
+| 액티브 부저 | I/O → **GPIO18** | 3.3V/5V | LOW에서 울리는 모듈이면 `BUZZER_ACTIVE_HIGH=0` |
+| 버튼 | 한쪽 → **GPIO27**, 다른 쪽 → **GND** | — | 내부 풀업 사용 (저항 불필요) |
+
+```
+HC-SR04 Echo ──[1kΩ]──┬── GPIO24
+                      │
+                    [2kΩ]
+                      │
+                     GND        → 5V × 2/(1+2) ≈ 3.3V
+```
+
+## 🍓 라즈베리파이에서 에이전트 실행
+
+```bash
+sudo apt update && sudo apt install -y git python3-gpiozero python3-lgpio libgpiod2
+git clone https://github.com/janghun08-bit/idc-monitor.git
+cd idc-monitor
+python3 -m venv --system-site-packages .venv   # Pi OS에 깔린 gpiozero를 그대로 쓰기 위해
+source .venv/bin/activate
+pip install -r agent/requirements.txt
+cp .env.example .env
+nano .env
+```
+`.env`에서 바꿀 값:
+- `SERVER_HOST=` EC2의 공인 IP
+- `USE_MOCK=0` (실제 부품 사용)
+- `AES_KEY=` **서버와 똑같은 값** (PC의 `.env`에서 직접 옮겨 적기, 절대 GitHub에 올리지 않기)
+
+```bash
+python -m agent.main
+```
+
+## ☁️ AWS EC2에 서버 배포 (Docker)
+
+**1. EC2 보안 그룹 인바운드 규칙**
+
+| 포트 | 용도 | 열 대상 |
+|---|---|---|
+| 22 | SSH 접속 | 내 IP |
+| 9000 | 에이전트 TCP 접속 | 라즈베리파이가 있는 곳 (또는 0.0.0.0/0) |
+| 3000 | Grafana 화면 | 내 IP |
+
+MySQL(3306)은 열지 않습니다. 서버 안에서만 쓰도록 `127.0.0.1`에만 묶여 있습니다.
+
+**2. Docker 설치 + 실행** (Ubuntu 기준)
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER && newgrp docker
+git clone https://github.com/janghun08-bit/idc-monitor.git
+cd idc-monitor
+cp .env.example .env
+nano .env    # DB_USER, 비밀번호들, AES_KEY(에이전트와 동일), SLACK_WEBHOOK_URL
+docker compose --env-file .env -f docker/docker-compose.yml --profile server up -d --build
+```
+MySQL, Grafana, 관제 서버 3개가 한 번에 뜹니다.
+
+**3. 확인**
+```bash
+docker compose -f docker/docker-compose.yml --profile server ps
+docker logs -f idc-server
+```
+Grafana: `http://<EC2 공인 IP>:3000`
+
+> 내 PC에서는 `--profile server` 없이 실행하면 MySQL과 Grafana만 뜹니다. 서버는 `py -m server.main`으로 따로 돌립니다.
+
+---
+
 ## 🎬 시연 시나리오 (에이전트 창에 글자 입력 + Enter)
 
 | 키 | 상황 | 기대 결과 |
@@ -283,6 +358,25 @@ py -m agent.main
 | `n` | 정상 복귀 | 🟢 초록 LED |
 | (에이전트 종료) | 현장 끊김 | 15초 뒤 Slack "응답 없음" 알림 |
 
+실제 부품을 쓸 때는 키보드 대신 이렇게 연출합니다.
+- **과열:** 센서를 손으로 감싸거나 드라이어 바람을 쐼. 시연 때는 `.env`의 `TEMP_WARN`, `TEMP_DANGER`를 낮춰 두면 쉽습니다.
+- **누수:** 센서에 물을 묻힘.
+- **접근:** 초음파 센서 앞 30cm 안에 손을 댐.
+- **경보 해제:** 버튼을 누름.
+
+### 🎥 시연 영상 순서 (추천)
+
+| # | 장면 | 화면에 보일 것 | 설명할 포인트 |
+|---|---|---|---|
+| 1 | 서버 켜기 | `🟢 서버 대기 중 0.0.0.0:9000`, `🔒 AES-256-GCM` | accept 루프 = 메인 쓰레드, Watchdog·SlackNotifier 쓰레드 시작 |
+| 2 | 에이전트 켜기 | `TCP 연결 성공`, `🔒 평문 / 실제 전송 바이트`, `WELCOME` | TCP 연결 1개로 양방향 통신, 길이 프레이밍, 암호화 전후 비교 |
+| 3 | 평소 상태 | `DATA 전송 seq=…` → `ACK 수신`, 초록 LED | 측정·전송·수신 쓰레드가 동시에 동작, 저장 후 ACK |
+| 4 | 과열 | 빨간 LED + 부저, Slack 알림, Grafana 빨간 카드 | 상태가 바뀔 때만 CMD, CMD 먼저 보내고 DB·Slack 기록 |
+| 5 | 버튼 | 부저 OFF, LED는 빨강 유지 | 버튼 콜백 쓰레드 → `send_lock`으로 같은 소켓에 안전하게 EVENT 전송 |
+| 6 | 접근 | 파란 LED, 출입 기록 | 우선순위: 빨강 > 노랑 > 파랑 > 초록 |
+| 7 | 서버 강제 종료 → 재시작 | `1→2→4→8초 재시도`, `🔁 재전송`, Grafana 그래프에 빈칸 없음 | 확인 대기함·대기함, 지수 백오프, seq 중복 방지 |
+| 8 | 에이전트 종료 | 15초 뒤 Slack "응답 없음" | Watchdog 쓰레드가 1초마다 감시 |
+
 ---
 
 ## 📈 진행 상황
@@ -293,7 +387,9 @@ py -m agent.main
 - [x] 4단계: Slack 알림 + 하트비트 + Watchdog
 - [x] 5단계: 재전송 버퍼 + 재연결 백오프 + AES 암호화
 - [x] 6단계: 실제 하드웨어 (GPIO)
-- [ ] 7단계: 배포 (EC2 + Docker)
+- [x] 7단계: 배포 (EC2 + Docker)
+- [ ] 실제 라즈베리파이 부품 연결 확인
+- [ ] EC2 배포 확인
 
 단계별로 무엇을 했고, 어떤 문제를 만나 어떻게 풀었는지는 **[📔 개발 일지](docs/devlog.md)**에 정리했습니다.
 

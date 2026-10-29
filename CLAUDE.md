@@ -40,7 +40,8 @@ idc-monitor/
 │  ├─ watchdog.py        # 하트비트 감시 쓰레드
 │  └─ requirements.txt
 ├─ docker/
-│  ├─ docker-compose.yml # mysql, grafana (+ 나중에 server)
+│  ├─ docker-compose.yml # mysql, grafana, server(profile "server", EC2용)
+│  ├─ server.Dockerfile
 │  ├─ mysql/init.sql
 │  └─ grafana/provisioning/  # datasource 자동 등록
 ├─ docs/devlog.md        # 개발 일지 (단계별 한 일, 문제와 해결 — 쉬운 말로)
@@ -217,3 +218,4 @@ BUZZER_ACTIVE_HIGH=1   # 부저가 HIGH에서 울리면 1
 - 2026-10-29 5단계 완료: DataBuffer(대기함)+PendingStore(확인 대기함, 전송 전 보관)로 재전송, ACK 10초 초과 재전송, 1→10초 지수 백오프, AES-256-GCM(crypto.py), 키 불일치 시 연결 끊음. 서버 재시작·DB 고장 시험에서 seq 누락 없음
 - 2026-10-29 작업 방식 변경: 사용자 요청으로 6·7단계는 단계별 설명·확인 없이 연속 진행 (일지는 계속 작성)
 - 2026-10-29 6단계 완료: DHT22Sensor(재시도+직전값), LeakSensor(극성 설정), UltrasonicSensor(echo 없음→None), GpioActuator(RGB·부저 beep), GpioButton. gpiozero MockFactory로 PC 검증 (실기 미확인)
+- 2026-10-29 7단계 완료: server.Dockerfile, compose에 server 서비스(profile "server", DB_HOST=mysql), .dockerignore, README에 배선·Pi 설치·EC2 배포·시연 영상 순서. 이미지 빌드·EC2·실기는 미확인

@@ -50,6 +50,30 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
+  # 관제 서버(TCP 9000). EC2 배포용이라 'server' 프로필로 묶어 둔다.
+  #   EC2:  docker compose --env-file .env -f docker/docker-compose.yml --profile server up -d --build
+  #   내 PC: 프로필 없이 실행하면 mysql·grafana만 뜨고, 서버는 py -m server.main 으로 따로 실행
+  server:
+    profiles: ["server"]
+    build:
+      context: ..
+      dockerfile: docker/server.Dockerfile
+    container_name: idc-server
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    env_file: ../.env
+    environment:
+      # 컨테이너끼리는 서비스 이름(mysql)과 컨테이너 안쪽 포트(3306)로 접속한다
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      SERVER_PORT: "9000"     # 컨테이너 안에서는 항상 9000, 바깥 포트는 아래 ports에서 바꾼다
+      PYTHONUNBUFFERED: "1"   # 로그가 바로바로 docker logs에 보이게
+    ports:
+      - "${SERVER_PORT:-9000}:9000"
+    stop_signal: SIGINT        # Ctrl+C와 같은 신호로 깔끔하게 종료
+
 volumes:
   mysql-data:
   grafana-data:
