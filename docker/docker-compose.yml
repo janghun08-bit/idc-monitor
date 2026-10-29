@@ -70,6 +70,7 @@ services:
       DB_PORT: "3306"
       SERVER_PORT: "9000"     # 컨테이너 안에서는 항상 9000, 바깥 포트는 아래 ports에서 바꾼다
       PYTHONUNBUFFERED: "1"   # 로그가 바로바로 docker logs에 보이게
+      TZ: Asia/Seoul          # 로그 시각만 한국 시간 (DB에는 코드에서 UTC로 바꿔 저장)
     ports:
       - "${SERVER_PORT:-9000}:9000"
     stop_signal: SIGINT        # Ctrl+C와 같은 신호로 깔끔하게 종료
