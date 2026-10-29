@@ -1,1 +1,2 @@
-# 1단계: 표준 라이브러리만 사용 (Mock 모드)
+# 5단계: AES-GCM 암호화 (라즈베리파이에서도 설치 필요: pip install -r agent/requirements.txt)
+cryptography==43.0.3

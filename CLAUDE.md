@@ -87,7 +87,17 @@ idc-monitor/
 - **ACK + 재전송(store-and-forward):** 에이전트는 보낸 DATA를 `pending`(seq → 메시지)에 보관, ACK 받으면 삭제.
   연결이 끊긴 동안 측정값은 버퍼(deque, 최대 1000개)에 쌓고, 재연결 후 순서대로 재전송.
   서버는 같은 seq를 중복 저장하지 않는다 (agent_id + seq 유니크).
-- **재연결:** 연결 실패 시 1→2→4→…최대 10초 백오프로 재시도.
+  - 구현: `DataBuffer`(대기함, 아직 안 보낸 측정값) → 전송 직전 seq 부여 + `PendingStore`(확인 대기함)에 **먼저 넣고** 전송 → ACK 시 삭제.
+    seq는 측정 시가 아니라 전송 시 붙인다 (재시작 직후 WELCOME 전에 측정한 값도 이어지는 번호를 받도록).
+  - 재연결하면 pending 전부를 seq 순서대로 먼저 재전송, 그다음 대기함. WELCOME의 last_seq로 pending을 지우지는 않는다 (중간 번호 저장 실패 시 잃을 수 있어서, 서버 중복 처리에 맡김).
+  - 연결 중에도 ACK가 10초(`ACK_TIMEOUT`) 없으면 재전송 (DB 고장 대비). pending도 최대 1000개.
+  - 대기함은 메모리에만 있어서 에이전트를 껐다 켜면 사라진다 (설계 범위 밖).
+- **재연결:** 연결 실패 시 1→2→4→…최대 10초 백오프로 재시도. 연결에 성공하면 1초로 되돌린다.
+- **AES-256-GCM:** `common/crypto.py` 한 곳에서 처리 (send_msg/recv_msg가 자동으로 거침). 메시지마다 새 nonce.
+  - 복호화 실패(`CryptoError`, 키 불일치·변조·평문) → 그 연결을 끊는다. 에이전트는 백오프로 재시도.
+  - `AES_KEY`가 비어 있으면 평문 + 시작 시 경고. 형식이 틀리면 시작하지 않는다. 에이전트도 `cryptography` 필요.
+  - 시연용으로 HELLO의 평문과 실제 전송 바이트(길이·nonce·암호문)를 로그에 한 번 보여준다.
+  - 같은 암호문을 그대로 다시 보내는 재생 공격은 막지 않는다 (DATA는 seq 중복 처리로 무시됨).
 - **하트비트 감시:** 서버의 Watchdog 쓰레드가 1초마다 확인, 15초간 아무 메시지도 없으면 `AGENT_OFFLINE` 이벤트 + Slack.
   다시 메시지가 오면 `AGENT_ONLINE`. (OFFLINE 레벨은 WARN, ONLINE은 OFFLINE 이후에만 기록. 시간은 `OFFLINE_SEC`로 조정)
   - 서버는 연결이 끊겨도 에이전트의 마지막 수신 시각(`liveness`)을 남겨 둬서 Watchdog이 감시를 이어 간다.
@@ -96,7 +106,7 @@ idc-monitor/
 - 소켓에는 `settimeout`을 걸고, 모든 네트워크 코드는 예외 처리.
 
 ## 쓰레드 구성
-- 에이전트: `SensorThread`(2초마다 측정 → 큐), `SenderThread`(큐/버퍼 → 전송, 하트비트), `ReceiverThread`(CMD·ACK 수신 → 액추에이터 제어), 메인 쓰레드(연결 관리, 버튼 콜백)
+- 에이전트: `SensorThread`(2초마다 측정 → 대기함), `SenderThread`(pending 재전송 → 대기함 전송, 하트비트, ACK 10초 초과분 재전송), `ReceiverThread`(CMD·ACK 수신 → 액추에이터 제어), 메인 쓰레드(연결 관리, 버튼 콜백)
 - 서버: 메인(accept 루프), `ClientHandler`(접속별 쓰레드), `Watchdog`, `SlackNotifier`(큐에서 꺼내 HTTP 전송 — Slack이 느려도 경보 처리가 멈추지 않게)
 - 공유 상태(pending, 클라이언트 목록)는 `threading.Lock`으로 보호.
 
@@ -197,3 +207,5 @@ OFFLINE_SEC=15
 - 2026-10-27 2단계 완료: AlarmEngine(상태 변화 시에만 CMD), 에이전트 ReceiverThread + MockActuator, KeyboardThread 상황 주입, 버튼 ALARM_CLEAR EVENT, send_lock
 - 2026-10-27 3단계 완료: docker-compose(MySQL 8.4 + Grafana 11.4, 프로젝트명 idc-monitor), init.sql, 대시보드 자동 등록, Database(Lock + 실패 시 10초 재시도 보류), 저장 후 ACK, 측정 시각 ts. 실제 MySQL/Grafana에서 과열 표시 확인
 - 2026-10-29 4단계 완료: SlackNotifier 쓰레드(큐 + 3초 타임아웃), 하트비트 5초, Watchdog(15초 OFFLINE/ONLINE), record_event 일원화, CMD 우선 전송, Windows 포트 독점. 재시작 시 seq 중복 버그 → HELLO/WELCOME으로 마지막 seq 동기화. 실제 Slack 알림 확인
+- 2026-10-29 5단계 완료: DataBuffer(대기함)+PendingStore(확인 대기함, 전송 전 보관)로 재전송, ACK 10초 초과 재전송, 1→10초 지수 백오프, AES-256-GCM(crypto.py), 키 불일치 시 연결 끊음. 서버 재시작·DB 고장 시험에서 seq 누락 없음
+- 2026-10-29 작업 방식 변경: 사용자 요청으로 6·7단계는 단계별 설명·확인 없이 연속 진행 (일지는 계속 작성)

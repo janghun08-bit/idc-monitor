@@ -5,13 +5,14 @@ import threading
 from agent.actuators import create_actuator
 from agent.client import AgentClient
 from agent.sensors import KeyboardThread, MockScenario, create_sensors
-from common import config
+from common import config, crypto
 
 
 def main():
     config.load_env()
     config.setup_logging()
     threading.current_thread().name = "Main(conn)"
+    crypto.init()
 
     use_mock = config.get_bool("USE_MOCK", True)
     scenario = MockScenario() if use_mock else None

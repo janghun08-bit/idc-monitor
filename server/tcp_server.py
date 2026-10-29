@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 
-from common import protocol
+from common import crypto, protocol
 from server.db import DatabaseError
 from server.notifier import format_event
 
@@ -43,6 +43,9 @@ class ClientHandler(threading.Thread):
             log.info("연결 종료됨 (agent=%s)", self.agent_id)
         except socket.timeout:
             log.warning("%d초 동안 수신 없음 → 연결 끊음 (agent=%s)", CLIENT_TIMEOUT, self.agent_id)
+        except crypto.CryptoError as e:
+            # 키가 다른 상대(또는 조작된 메시지)와는 더 이야기하지 않는다
+            log.error("🔒 %s → 연결 끊음 (%s:%s, agent=%s)", e, *self.addr, self.agent_id)
         except (OSError, ValueError) as e:
             log.warning("연결 오류: %s (agent=%s)", e, self.agent_id)
         finally:
@@ -58,7 +61,8 @@ class ClientHandler(threading.Thread):
             self.name = f"Handler-{self.agent_id}"  # 로그에서 어느 에이전트 쓰레드인지 보이게
             self.server.register(self)
             engine.reset(self.agent_id)
-            log.info("👋 HELLO 수신: agent_id=%s 등록", self.agent_id)
+            log.info("👋 HELLO 수신: agent_id=%s 등록%s", self.agent_id,
+                     " (🔓 복호화·위조 검사 통과)" if crypto.enabled() else "")
             # 에이전트가 다시 켜지면 seq가 1부터 시작해 DB의 옛 기록과 겹친다 → 마지막 번호를 알려준다
             try:
                 last_seq = self.server.db.last_seq(self.agent_id)
@@ -89,7 +93,7 @@ class ClientHandler(threading.Thread):
         try:
             is_new = self.server.db.save_reading(self.agent_id, seq, msg["ts"], d)
         except DatabaseError as e:
-            # 저장이 안 됐으니 ACK를 보내지 않는다 → 에이전트가 나중에 다시 보낼 수 있다(5단계)
+            # 저장이 안 됐으니 ACK를 보내지 않는다 → 에이전트가 10초 뒤 다시 보낸다
             log.error("🗄️ DB 저장 실패 seq=%d: %s → ACK 안 보냄", seq, e)
             is_new = None
         else:

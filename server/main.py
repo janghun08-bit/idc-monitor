@@ -2,7 +2,7 @@
 import logging
 import threading
 
-from common import config
+from common import config, crypto
 from server.alarm import AlarmEngine
 from server.db import Database
 from server.notifier import SlackNotifier
@@ -15,6 +15,7 @@ def main():
     config.setup_logging()
     threading.current_thread().name = "Main(accept)"
     log = logging.getLogger("server")
+    crypto.init()
 
     engine = AlarmEngine.from_config()
     log.info("판정 기준: %s", engine.describe())

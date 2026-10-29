@@ -5,7 +5,7 @@ TCP는 '바이트 스트림'이라서 send 한 번이 recv 한 번으로 그대�
 그래서 메시지마다 앞에 길이를 붙여 경계를 구분한다.
 
     프레임 = [4바이트 길이(big-endian)] + [payload]
-    payload = UTF-8 JSON  (5단계부터 AES-GCM으로 암호화)
+    payload = AES-GCM으로 암호화한 UTF-8 JSON  (crypto.py, AES_KEY가 없으면 평문)
 """
 import json
 import socket
@@ -56,9 +56,14 @@ def recv_exact(sock, n: int, allow_timeout: bool = True) -> bytes:
     return bytes(buf)
 
 
-def send_msg(sock, msg: dict) -> None:
+def encode_frame(msg: dict) -> bytes:
+    """메시지 → 전송할 바이트 (길이 4바이트 + 암호화된 JSON)."""
     payload = crypto.encrypt(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
-    sock.sendall(HEADER.pack(len(payload)) + payload)
+    return HEADER.pack(len(payload)) + payload
+
+
+def send_msg(sock, msg: dict) -> None:
+    sock.sendall(encode_frame(msg))
 
 
 def recv_msg(sock) -> dict:
