@@ -219,3 +219,4 @@ BUZZER_ACTIVE_HIGH=1   # 부저가 HIGH에서 울리면 1
 - 2026-10-29 작업 방식 변경: 사용자 요청으로 6·7단계는 단계별 설명·확인 없이 연속 진행 (일지는 계속 작성)
 - 2026-10-29 6단계 완료: DHT22Sensor(재시도+직전값), LeakSensor(극성 설정), UltrasonicSensor(echo 없음→None), GpioActuator(RGB·부저 beep), GpioButton. gpiozero MockFactory로 PC 검증 (실기 미확인)
 - 2026-10-29 7단계 완료: server.Dockerfile, compose에 server 서비스(profile "server", DB_HOST=mysql), .dockerignore, README에 배선·Pi 설치·EC2 배포·시연 영상 순서. 이미지 빌드·EC2·실기는 미확인
+- 2026-10-29 EC2 배포: 3.34.253.134(t3.small, 서울)에서 3개 컨테이너 실행, PC 에이전트 연결 확인. 학교망은 9000 아웃바운드 차단 → 핫스팟 사용

@@ -304,7 +304,7 @@ class AgentClient:
             log.info("📥 WELCOME 수신: 서버 마지막 저장 seq=%d → %d번부터 이어서 보냄", last_seq, last_seq + 1)
             self.seq = last_seq
         else:
-            log.info("📥 WELCOME 수신: 서버 마지막 저장 seq=%d, 내 번호(%d)가 더 큼 → 그대로 사용", last_seq, self.seq)
+            log.info("📥 WELCOME 수신: 서버 마지막 저장 seq=%d, 내 번호(%d)가 같거나 큼 → 그대로 사용", last_seq, self.seq)
 
     def run(self):
         SensorThread(self.sensors, self.buffer, self.stop_event).start()
