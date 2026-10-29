@@ -147,7 +147,10 @@ Grafana: MySQL datasource 자동 등록, 패널 = 온도/습도 시계열, 누�
 | HC-SR04 Echo | GPIO24 | **1kΩ/2kΩ 분압 필수** (5V → 3.3V) |
 | RGB LED R / G / B | GPIO16 / 20 / 21 | 모듈에 저항 내장 |
 | 부저 | GPIO18 | 액티브 부저, 동작 레벨(High/Low)은 설정값으로 |
-| 버튼 | GPIO27 | 내부 풀업, GND와 연결 |
+| 버튼 | GPIO27 | 내부 풀업, GND와 연결. 실물은 HW-504 조이스틱의 SW 핀(누르면 GND)만 사용, VRx/VRy 미사용 |
+
+- 실물 부품(2026-10-29 구매, 10/31 도착): 빗물 센서 = 감지판 + MH-RD(LM393) 기판(DO 사용, AO 미사용), DHT22(AM2302) 3핀 모듈. 나머지(초음파, RGB, 부저, HW-504, 브레드보드)는 보유.
+- 하드웨어 연결·실기 시험은 2026-11-04(수) 사용자 시험 끝난 뒤 진행 예정 (영상 제출 11/6).
 
 라이브러리: `gpiozero`(LED·부저·버튼·DistanceSensor·DigitalInputDevice), `adafruit-circuitpython-dht`(DHT22, 읽기 실패 시 재시도).
 GPIO 관련 import는 실제 구현 클래스 안에서만 해서, PC(Mock 모드)에서 import 에러가 나지 않게 한다.
