@@ -292,7 +292,7 @@ py -m agent.main
 - [x] 3단계: MySQL 저장 + Grafana + ACK
 - [x] 4단계: Slack 알림 + 하트비트 + Watchdog
 - [x] 5단계: 재전송 버퍼 + 재연결 백오프 + AES 암호화
-- [ ] 6단계: 실제 하드웨어 (GPIO)
+- [x] 6단계: 실제 하드웨어 (GPIO)
 - [ ] 7단계: 배포 (EC2 + Docker)
 
 단계별로 무엇을 했고, 어떤 문제를 만나 어떻게 풀었는지는 **[📔 개발 일지](docs/devlog.md)**에 정리했습니다.

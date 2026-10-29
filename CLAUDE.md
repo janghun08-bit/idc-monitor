@@ -150,6 +150,10 @@ Grafana: MySQL datasource 자동 등록, 패널 = 온도/습도 시계열, 누�
 
 라이브러리: `gpiozero`(LED·부저·버튼·DistanceSensor·DigitalInputDevice), `adafruit-circuitpython-dht`(DHT22, 읽기 실패 시 재시도).
 GPIO 관련 import는 실제 구현 클래스 안에서만 해서, PC(Mock 모드)에서 import 에러가 나지 않게 한다.
+- DHT22: 실패 시 2.1초 뒤 1회 재시도, 그래도 실패면 10초 이내 직전값, 아니면 None (서버는 None 항목을 판정에서 건너뜀).
+- 초음파: `partial=True`(echo가 없을 때 read가 멈추지 않게). 2cm 미만(=echo 없음, gpiozero가 0을 줌)은 None으로 보낸다 — 0을 보내면 '접근'으로 오판.
+- 부저는 `beep()`(gpiozero 백그라운드 쓰레드)로 0.5초 간격 삐–삐. 버튼 콜백은 gpiozero 이벤트 쓰레드에서 실행됨. 종료 시 LED·부저 끄고 핀 해제.
+- PC 검증은 `GPIOZERO_PIN_FACTORY=mock`(gpiozero MockFactory)과 가짜 DHT 모듈로 했다. 실제 Pi에서 동작은 아직 미확인.
 
 ## .env 키 목록
 ```
@@ -172,6 +176,9 @@ TEMP_DANGER=35
 HUMI_WARN=70
 ACCESS_CM=30
 OFFLINE_SEC=15
+LEAK_ACTIVE_LOW=1      # 누수 모듈이 물 감지 시 LOW면 1
+LED_COMMON_ANODE=0     # 공통 애노드 RGB LED면 1 (핀 LOW일 때 켜짐)
+BUZZER_ACTIVE_HIGH=1   # 부저가 HIGH에서 울리면 1
 ```
 
 ## Mock 센서 동작 (시연 시나리오 재현용)
@@ -209,3 +216,4 @@ OFFLINE_SEC=15
 - 2026-10-29 4단계 완료: SlackNotifier 쓰레드(큐 + 3초 타임아웃), 하트비트 5초, Watchdog(15초 OFFLINE/ONLINE), record_event 일원화, CMD 우선 전송, Windows 포트 독점. 재시작 시 seq 중복 버그 → HELLO/WELCOME으로 마지막 seq 동기화. 실제 Slack 알림 확인
 - 2026-10-29 5단계 완료: DataBuffer(대기함)+PendingStore(확인 대기함, 전송 전 보관)로 재전송, ACK 10초 초과 재전송, 1→10초 지수 백오프, AES-256-GCM(crypto.py), 키 불일치 시 연결 끊음. 서버 재시작·DB 고장 시험에서 seq 누락 없음
 - 2026-10-29 작업 방식 변경: 사용자 요청으로 6·7단계는 단계별 설명·확인 없이 연속 진행 (일지는 계속 작성)
+- 2026-10-29 6단계 완료: DHT22Sensor(재시도+직전값), LeakSensor(극성 설정), UltrasonicSensor(echo 없음→None), GpioActuator(RGB·부저 beep), GpioButton. gpiozero MockFactory로 PC 검증 (실기 미확인)

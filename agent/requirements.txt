@@ -1,2 +1,7 @@
-# 5단계: AES-GCM 암호화 (라즈베리파이에서도 설치 필요: pip install -r agent/requirements.txt)
+# 5단계: AES-GCM 암호화 (PC·라즈베리파이 모두 필요)
 cryptography==43.0.3
+
+# 6단계: 실제 하드웨어 (라즈베리파이에서만 설치됨, PC Mock 모드에서는 필요 없음)
+# gpiozero와 lgpio는 Raspberry Pi OS에 기본 설치되어 있다 → 가상환경은 --system-site-packages로 만든다 (README 참고)
+gpiozero>=2.0; platform_system == "Linux"
+adafruit-circuitpython-dht>=4.0; platform_system == "Linux"

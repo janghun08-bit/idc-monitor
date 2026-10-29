@@ -2,7 +2,7 @@
 import logging
 import threading
 
-from agent.actuators import create_actuator
+from agent.actuators import GpioButton, create_actuator
 from agent.client import AgentClient
 from agent.sensors import KeyboardThread, MockScenario, create_sensors
 from common import config, crypto
@@ -23,13 +23,21 @@ def main():
         sensors=create_sensors(use_mock, scenario),
         actuator=create_actuator(use_mock),
     )
+    button = None
     if use_mock:
         KeyboardThread(scenario, client.on_button).start()
+    else:
+        button = GpioButton(client.on_button)
     try:
         client.run()
     except KeyboardInterrupt:
         logging.getLogger("agent").info("Ctrl+C → 에이전트 종료")
         client.stop()
+    finally:
+        # 끝낼 때 부저·LED를 끄고 핀을 돌려놓는다 (안 하면 부저가 계속 울릴 수 있음)
+        client.actuator.close()
+        if button:
+            button.close()
 
 
 if __name__ == "__main__":
