@@ -43,7 +43,8 @@ idc-monitor/
 │  ├─ docker-compose.yml # mysql, grafana (+ 나중에 server)
 │  ├─ mysql/init.sql
 │  └─ grafana/provisioning/  # datasource 자동 등록
-└─ README.md
+├─ docs/devlog.md        # 개발 일지 (단계별 한 일, 문제와 해결 — 쉬운 말로)
+└─ README.md             # 프로젝트 소개 (교수님·포트폴리오용, 비유로 쉽게)
 ```
 
 ## TCP 프로토콜
@@ -186,6 +187,7 @@ OFFLINE_SEC=15
   4. 이 단계에서 TCP와 쓰레드가 어떻게 동작하는지 짧은 설명
 - 5단계(재전송 버퍼, AES)는 구현 전에 계획을 먼저 설명하고 내 확인을 받는다.
 - 내가 "확인했어"라고 하면 커밋하고, 아래 "진행 기록"에 한 줄 추가한다.
+  - 같이 `docs/devlog.md`에 그 단계 일지(목표, 한 일, 쉽게 이해하기, 부딪힌 문제→원인→해결, 결과)를 쓰고, README의 진행 상황 체크를 갱신한 뒤 GitHub에 push한다.
 - 에러가 나면 원인을 먼저 설명하고 수정한다.
 - 설계를 바꾸면 이 CLAUDE.md도 같이 수정한다.
 - 비밀값(.env 내용, 키, Webhook URL)은 출력하거나 커밋하지 않는다.
