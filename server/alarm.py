@@ -107,9 +107,12 @@ class AlarmEngine:
         return commands, events
 
     def alarm_clear(self, agent_id: str):
-        """버튼: 부저만 끈다. LED는 원인이 남아 있으면 그대로."""
+        """버튼: 부저만 끈다. LED는 원인이 남아 있으면 그대로.
+        DANGER가 아닐 때 누르면 끌 부저가 없으므로 무시한다 (기억해 두면 다음 경보의 부저가 안 울린다)."""
         with self.lock:
             st = self.states.setdefault(agent_id, AgentState())
+            if st.alarm_level != DANGER:
+                return [], []
             st.silenced = True
             events = [_event("ALARM_CLEAR", st.alarm_level, "현장 버튼으로 부저 해제")]
             commands = self._sync_outputs(agent_id, st)

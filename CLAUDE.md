@@ -80,6 +80,7 @@ idc-monitor/
 - 접근(ACCESS)은 감지 시작 시 1회만 기록, 30cm 밖으로 나가면 해제.
 - 버튼(ALARM_CLEAR): 부저만 즉시 OFF. 원인이 남아 있으면 LED는 유지, 정상으로 돌아오면 자동 해제.
   - 에이전트가 부저를 현장에서 바로 끄고 EVENT를 보낸다 (연결이 끊겨 있어도 부저는 꺼짐). 서버는 DANGER를 벗어날 때까지 부저를 다시 켜지 않는다.
+  - DANGER가 아닐 때 누른 버튼은 서버가 무시한다 (기록·Slack 없음, 다음 경보의 부저에 영향 없음).
 - 경보 단계(NORMAL/WARN/DANGER) 변화 → `STATE_CHANGE`, 출입 시작 → `ACCESS`로 따로 기록한다. 접속 직후 첫 판정이 NORMAL이면 기록하지 않는다.
 - 에이전트가 새로 접속(HELLO)하면 서버는 그 에이전트 상태를 초기화하고, 첫 DATA에서 LED·부저 CMD를 다시 보낸다.
 - 임계값은 `.env`로 바꿀 수 있게 (시연 때 30℃ 대신 낮은 값으로 조정 가능).
@@ -146,18 +147,18 @@ Grafana: MySQL datasource 자동 등록, 패널 = 온도/습도 시계열, 누�
 | HC-SR04 Trig | GPIO23 | VCC 5V |
 | HC-SR04 Echo | GPIO24 | **1kΩ/2kΩ 분압 필수** (5V → 3.3V) |
 | RGB LED R / G / B | GPIO16 / 20 / 21 | 모듈에 저항 내장 |
-| 부저 | GPIO18 | 액티브 부저, 동작 레벨(High/Low)은 설정값으로 |
-| 버튼 | GPIO27 | 내부 풀업, GND와 연결. 실물은 HW-504 조이스틱의 SW 핀(누르면 GND)만 사용, VRx/VRy 미사용 |
+| 부저 | GPIO18 | 액티브 부저, 동작 레벨(High/Low)은 설정값으로. 실물은 3-24V DC 2선 부저(+ GPIO18, - GND) 직결 |
+| 버튼 | GPIO27 | 내부 풀업, GND와 연결. 실물은 4다리 택트 스위치 (HW-504 대신) |
 
-- 실물 부품(2026-10-29 구매, 10/31 도착): 빗물 센서 = 감지판 + MH-RD(LM393) 기판(DO 사용, AO 미사용), DHT22(AM2302) 3핀 모듈. 나머지(초음파, RGB, 부저, HW-504, 브레드보드)는 보유.
-- 하드웨어 연결·실기 시험은 2026-11-04(수) 사용자 시험 끝난 뒤 진행 예정 (영상 제출 11/6).
+- 실물 부품(2026-10-29 구매, 10/31 도착): 빗물 센서 = 감지판 + MH-RD(LM393) 기판(DO 사용, AO 미사용), DHT22(AM2302) 3핀 모듈. 나머지(초음파, RGB, 부저, 택트 스위치, 브레드보드)는 보유. 3핀 부저 모듈은 소리가 안 나서 교체(원인 미확정).
+- 초음파 Echo 분압은 1kΩ 3개로 구성 (Echo 쪽 1개, GND 쪽 2개 직렬).
 
 라이브러리: `gpiozero`(LED·부저·버튼·DistanceSensor·DigitalInputDevice), `adafruit-circuitpython-dht`(DHT22, 읽기 실패 시 재시도).
 GPIO 관련 import는 실제 구현 클래스 안에서만 해서, PC(Mock 모드)에서 import 에러가 나지 않게 한다.
 - DHT22: 실패 시 2.1초 뒤 1회 재시도, 그래도 실패면 10초 이내 직전값, 아니면 None (서버는 None 항목을 판정에서 건너뜀).
 - 초음파: `partial=True`(echo가 없을 때 read가 멈추지 않게). 2cm 미만(=echo 없음, gpiozero가 0을 줌)은 None으로 보낸다 — 0을 보내면 '접근'으로 오판.
 - 부저는 `beep()`(gpiozero 백그라운드 쓰레드)로 0.5초 간격 삐–삐. 버튼 콜백은 gpiozero 이벤트 쓰레드에서 실행됨. 종료 시 LED·부저 끄고 핀 해제.
-- PC 검증은 `GPIOZERO_PIN_FACTORY=mock`(gpiozero MockFactory)과 가짜 DHT 모듈로 했다. 실제 Pi에서 동작은 아직 미확인.
+- 2026-11-06 실제 Pi에서 6개 부품과 누수·접근·버튼 경보 흐름을 확인했다. Blinka 설치 질문은 `BLINKA_SKIP_DEPENDENCY_CHECK=1`로 건너뛴다.
 
 ## .env 키 목록
 ```
@@ -223,3 +224,4 @@ BUZZER_ACTIVE_HIGH=1   # 부저가 HIGH에서 울리면 1
 - 2026-10-29 6단계 완료: DHT22Sensor(재시도+직전값), LeakSensor(극성 설정), UltrasonicSensor(echo 없음→None), GpioActuator(RGB·부저 beep), GpioButton. gpiozero MockFactory로 PC 검증 (실기 미확인)
 - 2026-10-29 7단계 완료: server.Dockerfile, compose에 server 서비스(profile "server", DB_HOST=mysql), .dockerignore, README에 배선·Pi 설치·EC2 배포·시연 영상 순서. 이미지 빌드·EC2·실기는 미확인
 - 2026-10-29 EC2 배포: 3.34.253.134(t3.small, 서울)에서 3개 컨테이너 실행, PC 에이전트 연결 확인. (당시 학교망 차단으로 추정했으나 11/5 확인 결과 보안 그룹 소스 문제)
+- 2026-11-06 실물 연결: 6개 부품 시험 통과, 누수·접근·버튼 흐름 확인. 정상 상태에서 누른 버튼이 다음 경보 부저를 막던 버그 수정, Blinka 시작 질문 제거. 과열 시험·리허설은 진행 예정

@@ -8,6 +8,7 @@ Mock 센서는 MockScenario를 보고 값을 만든다. 키보드로 시나리�
 (KeyboardThread) 다음 측정부터 과열·누수·접근 값이 나온다.
 """
 import logging
+import os
 import random
 import sys
 import threading
@@ -122,6 +123,8 @@ class DHT22Sensor(BaseSensor):
     STALE_SEC = 10      # 실패가 이어져도 이 시간 안의 마지막 정상값은 대신 쓴다
 
     def __init__(self, pin: int):
+        # Blinka가 시작할 때 "부가 패키지를 설치할까요?"라고 물어 멈추지 않게 한다 (DHT22에는 필요 없는 패키지)
+        os.environ.setdefault("BLINKA_SKIP_DEPENDENCY_CHECK", "1")
         import adafruit_dht
         import board
         self.device = adafruit_dht.DHT22(getattr(board, f"D{pin}"), use_pulseio=False)
