@@ -64,19 +64,25 @@ class Database:
         """쿼리 실행. fetch=False면 바뀐 줄 수, True면 첫 줄을 돌려준다."""
         import pymysql
         with self.lock:
-            try:
-                with self._connection().cursor() as cur:
-                    rows = cur.execute(sql, args)
-                    return cur.fetchone() if fetch else rows
-            except pymysql.Error as e:
-                # 연결이 깨졌을 수 있으니 버리고, 다음 쿼리 때 새로 연결한다
-                if self.conn is not None:
-                    try:
-                        self.conn.close()
-                    except Exception:
-                        pass
-                self.conn = None
-                raise DatabaseError(str(e)) from e
+            while True:
+                had_conn = self.conn is not None
+                try:
+                    with self._connection().cursor() as cur:
+                        rows = cur.execute(sql, args)
+                        return cur.fetchone() if fetch else rows
+                except pymysql.Error as e:
+                    # 연결이 깨졌을 수 있으니 버리고, 다음 쿼리 때 새로 연결한다
+                    if self.conn is not None:
+                        try:
+                            self.conn.close()
+                        except Exception:
+                            pass
+                    self.conn = None
+                    # 오래 쉬면 MySQL이 연결을 끊는다(wait_timeout). 쓰던 연결이 끊긴 것이면 바로 한 번 다시 연결한다
+                    if had_conn and isinstance(e, (pymysql.OperationalError, pymysql.InterfaceError)):
+                        log.warning("🗄️ MySQL 연결이 끊겨 있었음 → 다시 연결해 재시도")
+                        continue
+                    raise DatabaseError(str(e)) from e
 
     def check(self):
         """서버 시작 시 연결 확인. 실패해도 서버는 계속 뜬다."""

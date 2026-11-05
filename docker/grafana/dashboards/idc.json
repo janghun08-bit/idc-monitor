@@ -127,7 +127,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "lengthcm",
+          "unit": "suffix: cm",
           "decimals": 0,
           "color": { "mode": "thresholds" },
           "thresholds": {
