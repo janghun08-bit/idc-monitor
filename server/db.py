@@ -81,6 +81,7 @@ class Database:
                     # 오래 쉬면 MySQL이 연결을 끊는다(wait_timeout). 쓰던 연결이 끊긴 것이면 바로 한 번 다시 연결한다
                     if had_conn and isinstance(e, (pymysql.OperationalError, pymysql.InterfaceError)):
                         log.warning("🗄️ MySQL 연결이 끊겨 있었음 → 다시 연결해 재시도")
+                        self.retry_at = 0.0   # DB가 죽은 것이 아닐 수 있으니 10초 보류 없이 시도한다
                         continue
                     raise DatabaseError(str(e)) from e
 
