@@ -1,18 +1,37 @@
 {
   "uid": "idc-monitor",
   "title": "서버실 환경·보안 관제",
+  "description": "온도 색·기준선과 '현재 상태' 쿼리의 기준값은 서버 .env의 TEMP_WARN, TEMP_DANGER, HUMI_WARN, ACCESS_CM과 맞춰 둔다.",
   "tags": ["idc"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
+  "graphTooltip": 1,
   "refresh": "5s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": { "from": "now-15m", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "name": "경보 변화",
+        "enable": true,
+        "iconColor": "rgba(242, 73, 92, 0.8)",
+        "datasource": { "type": "mysql", "uid": "idc-mysql" },
+        "target": {
+          "refId": "Anno",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ts AS time, message AS text FROM events WHERE $__timeFilter(ts) AND event_type = 'STATE_CHANGE' ORDER BY ts"
+        }
+      }
+    ]
+  },
   "panels": [
     {
-      "id": 1,
+      "id": 7,
       "type": "stat",
-      "title": "현재 온도",
+      "title": "현재 상태",
       "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
       "datasource": { "type": "mysql", "uid": "idc-mysql" },
       "targets": [
@@ -22,7 +41,51 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT temperature AS \"온도\" FROM sensor_readings ORDER BY ts DESC, id DESC LIMIT 1"
+          "rawSql": "SELECT CASE WHEN TIMESTAMPDIFF(SECOND, ts, UTC_TIMESTAMP()) > 20 THEN 'OFFLINE' WHEN leak = 1 OR temperature >= 25 THEN 'DANGER' WHEN temperature >= 23 OR humidity >= 70 THEN 'WARN' WHEN distance_cm < 30 THEN 'ACCESS' ELSE 'NORMAL' END AS \"상태\" FROM sensor_readings ORDER BY ts DESC, id DESC LIMIT 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#2b3038", "value": null }] },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "NORMAL": { "text": "정상 운영", "color": "semi-dark-green", "index": 0 },
+                "ACCESS": { "text": "출입 감지", "color": "blue", "index": 1 },
+                "WARN": { "text": "경고", "color": "semi-dark-orange", "index": 2 },
+                "DANGER": { "text": "위험", "color": "red", "index": 3 },
+                "OFFLINE": { "text": "연결 끊김", "color": "#4a4f57", "index": 4 }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "text": { "valueSize": 44 },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "온도",
+      "gridPos": { "x": 6, "y": 0, "w": 5, "h": 5 },
+      "datasource": { "type": "mysql", "uid": "idc-mysql" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mysql", "uid": "idc-mysql" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts AS time, temperature AS \"온도\" FROM sensor_readings WHERE $__timeFilter(ts) ORDER BY ts"
         }
       ],
       "fieldConfig": {
@@ -33,54 +96,70 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 30 },
-              { "color": "red", "value": 35 }
+              { "color": "text", "value": null },
+              { "color": "orange", "value": 23 },
+              { "color": "red", "value": 25 }
             ]
           }
         },
         "overrides": []
       },
-      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "text": { "valueSize": 40 },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "현재 습도",
-      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+      "title": "습도",
+      "gridPos": { "x": 11, "y": 0, "w": 5, "h": 5 },
       "datasource": { "type": "mysql", "uid": "idc-mysql" },
       "targets": [
         {
           "refId": "A",
           "datasource": { "type": "mysql", "uid": "idc-mysql" },
           "editorMode": "code",
-          "format": "table",
+          "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT humidity AS \"습도\" FROM sensor_readings ORDER BY ts DESC, id DESC LIMIT 1"
+          "rawSql": "SELECT ts AS time, humidity AS \"습도\" FROM sensor_readings WHERE $__timeFilter(ts) ORDER BY ts"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
           "decimals": 1,
+          "min": 0,
+          "max": 100,
           "color": { "mode": "thresholds" },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 70 }
+              { "color": "text", "value": null },
+              { "color": "orange", "value": 70 }
             ]
           }
         },
         "overrides": []
       },
-      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "text": { "valueSize": 40 },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
     },
     {
       "id": 3,
       "type": "stat",
       "title": "누수",
-      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 5 },
       "datasource": { "type": "mysql", "uid": "idc-mysql" },
       "targets": [
         {
@@ -94,26 +173,34 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "fixed" },
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] },
           "mappings": [
             {
               "type": "value",
               "options": {
-                "0": { "text": "정상", "color": "green" },
-                "1": { "text": "누수 감지!", "color": "red" }
+                "0": { "text": "없음", "color": "text", "index": 0 },
+                "1": { "text": "감지!", "color": "red", "index": 1 }
               }
             }
           ]
         },
         "overrides": []
       },
-      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "text": { "valueSize": 40 },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
     },
     {
       "id": 4,
       "type": "stat",
-      "title": "출입 (거리, 30cm 미만이면 접근)",
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+      "title": "출입 거리 (30cm 미만 접근)",
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 5 },
       "datasource": { "type": "mysql", "uid": "idc-mysql" },
       "targets": [
         {
@@ -134,19 +221,32 @@
             "mode": "absolute",
             "steps": [
               { "color": "blue", "value": null },
-              { "color": "green", "value": 30 }
+              { "color": "text", "value": 30 }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "range",
+              "options": { "from": 399.5, "to": 100000, "result": { "text": "감지 없음", "index": 0 } }
+            }
+          ]
         },
         "overrides": []
       },
-      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value",
+        "text": { "valueSize": 40 },
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "온도 / 습도 추이",
-      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 9 },
+      "title": "온도 추이 (주황선 경고, 빨간선 위험)",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 9 },
       "datasource": { "type": "mysql", "uid": "idc-mysql" },
       "targets": [
         {
@@ -155,32 +255,79 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT ts AS time, temperature AS \"온도\", humidity AS \"습도\" FROM sensor_readings WHERE $__timeFilter(ts) ORDER BY ts"
+          "rawSql": "SELECT ts AS time, temperature AS \"온도\" FROM sensor_readings WHERE $__timeFilter(ts) ORDER BY ts"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
-        },
-        "overrides": [
-          {
-            "matcher": { "id": "byName", "options": "온도" },
-            "properties": [
-              { "id": "unit", "value": "celsius" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+          "unit": "celsius",
+          "decimals": 1,
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "orange", "value": 23 },
+              { "color": "red", "value": 25 }
             ]
           },
-          {
-            "matcher": { "id": "byName", "options": "습도" },
-            "properties": [
-              { "id": "unit", "value": "percent" },
-              { "id": "custom.axisPlacement", "value": "right" },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
-            ]
+          "custom": {
+            "lineWidth": 2,
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "axisSoftMin": 15,
+            "axisSoftMax": 30,
+            "thresholdsStyle": { "mode": "line" }
           }
-        ]
+        },
+        "overrides": []
       },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "습도 추이 (주황선 경고)",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 9 },
+      "datasource": { "type": "mysql", "uid": "idc-mysql" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "mysql", "uid": "idc-mysql" },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT ts AS time, humidity AS \"습도\" FROM sensor_readings WHERE $__timeFilter(ts) ORDER BY ts"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "orange", "value": 70 }
+            ]
+          },
+          "custom": {
+            "lineWidth": 2,
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "showLegend": false }, "tooltip": { "mode": "single" } }
     },
     {
       "id": 6,
@@ -195,26 +342,35 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT ts AS \"시각\", agent_id AS \"에이전트\", event_type AS \"종류\", level AS \"단계\", message AS \"내용\" FROM events ORDER BY ts DESC, id DESC LIMIT 50"
+          "rawSql": "SELECT ts AS \"시각\", level AS \"단계\", event_type AS \"종류\", message AS \"내용\", agent_id AS \"장치\" FROM events ORDER BY ts DESC, id DESC LIMIT 50"
         }
       ],
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           {
+            "matcher": { "id": "byName", "options": "시각" },
+            "properties": [
+              { "id": "unit", "value": "time:MM-DD HH:mm:ss" },
+              { "id": "custom.width", "value": 150 }
+            ]
+          },
+          {
             "matcher": { "id": "byName", "options": "단계" },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "custom.width", "value": 90 },
+              { "id": "custom.align", "value": "center" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
               {
                 "id": "mappings",
                 "value": [
                   {
                     "type": "value",
                     "options": {
-                      "DANGER": { "color": "red" },
-                      "WARN": { "color": "yellow" },
-                      "ACCESS": { "color": "blue" },
-                      "NORMAL": { "color": "green" }
+                      "DANGER": { "text": "위험", "color": "red", "index": 0 },
+                      "WARN": { "text": "경고", "color": "orange", "index": 1 },
+                      "ACCESS": { "text": "출입", "color": "blue", "index": 2 },
+                      "NORMAL": { "text": "정상", "color": "green", "index": 3 }
                     }
                   }
                 ]
@@ -222,12 +378,33 @@
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "시각" },
-            "properties": [{ "id": "custom.width", "value": 180 }]
+            "matcher": { "id": "byName", "options": "종류" },
+            "properties": [
+              { "id": "custom.width", "value": 120 },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "STATE_CHANGE": { "text": "상태 변화", "index": 0 },
+                      "ACCESS": { "text": "출입", "index": 1 },
+                      "ALARM_CLEAR": { "text": "경보 해제", "index": 2 },
+                      "AGENT_OFFLINE": { "text": "연결 끊김", "index": 3 },
+                      "AGENT_ONLINE": { "text": "연결 복구", "index": 4 }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "장치" },
+            "properties": [{ "id": "custom.width", "value": 90 }]
           }
         ]
       },
-      "options": { "showHeader": true }
+      "options": { "showHeader": true, "cellHeight": "sm" }
     }
   ]
 }
