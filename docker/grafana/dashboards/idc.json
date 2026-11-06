@@ -41,7 +41,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT CASE WHEN TIMESTAMPDIFF(SECOND, ts, UTC_TIMESTAMP()) > 20 THEN 'OFFLINE' WHEN leak = 1 OR temperature >= 25 THEN 'DANGER' WHEN temperature >= 23 OR humidity >= 70 THEN 'WARN' WHEN distance_cm < 30 THEN 'ACCESS' ELSE 'NORMAL' END AS \"상태\" FROM sensor_readings ORDER BY ts DESC, id DESC LIMIT 1"
+          "rawSql": "SELECT CASE WHEN TIMESTAMPDIFF(SECOND, ts, UTC_TIMESTAMP()) > 15 THEN 'OFFLINE' WHEN leak = 1 OR temperature >= 25 THEN 'DANGER' WHEN temperature >= 23 OR humidity >= 70 THEN 'WARN' WHEN distance_cm < 30 THEN 'ACCESS' ELSE 'NORMAL' END AS \"상태\" FROM sensor_readings ORDER BY ts DESC, id DESC LIMIT 1"
         }
       ],
       "fieldConfig": {
